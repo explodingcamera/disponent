@@ -1,0 +1,5 @@
+error: Generic parameter `T` conflicts with trait generic parameter. Use a different name.
+  --> tests/compile_fail/generic_clash.rs:10:25
+   |
+10 |         fn convert_with<T: Clone>(&self, extra: T) -> String;
+   |                         ^

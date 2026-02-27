@@ -1,0 +1,5 @@
+error: Arbitrary self types like `Arc<Self>` or `Box<Self>` are not supported. Use `self`, `&self`, or `&mut self` instead.
+ --> tests/compile_fail/box_self.rs:9:25
+  |
+9 |         fn method(self: Box<Self>);
+  |                         ^^^

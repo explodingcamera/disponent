@@ -1,0 +1,17 @@
+error: Parameter name `__disponent_inner` is reserved. Use a different name.
+  --> tests/compile_fail/inner_name_conflict.rs:10:27
+   |
+10 |         fn another(&self, __disponent_inner: i32) -> i32;
+   |                           ^^^^^^^^^^^^^^^^^
+
+error[E0405]: cannot find trait `WithInner` in this scope
+  --> tests/compile_fail/inner_name_conflict.rs:15:6
+   |
+15 | impl WithInner for Foo {
+   |      ^^^^^^^^^ not found in this scope
+
+error[E0405]: cannot find trait `WithInner` in this scope
+  --> tests/compile_fail/inner_name_conflict.rs:25:6
+   |
+25 | impl WithInner for Bar {
+   |      ^^^^^^^^^ not found in this scope

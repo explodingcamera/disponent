@@ -1,4 +1,9 @@
+// TODO: add tests for all of the different features (async, default impls, generics, lifetimes, etc)
+
 disponent::declare!(
+    // TODO: support for multiple enums in the same macro invocation (all traits will be implemented for all enums)
+    // TODO: add a inherent(visibility) option to inherent to override the visibility of the generated inherent impl
+    // e.g `inherent(pub)`, `inherent(pub(crate))`, `inherent(pub(super))`, `inherent` (same as enum)
     #[disponent::configure(inherent, inline)]
     #[derive(Debug, Clone)]
     pub enum FooOrBar {
@@ -8,11 +13,11 @@ disponent::declare!(
         Buz(Buz),
     }
 
+    // TODO: support for multiple traits in the same macro invocation (all enums will implement all traits)
     pub trait SayHello {
-        fn say_hello(&self) -> impl Future<Output = ()>;
-        fn say_hello_send(&self) -> impl Future<Output = ()> + Send {
-            async { println!("Default say_hello_send") }
-        }
+        #[allow(async_fn_in_trait)]
+        async fn say_hello(&self);
+        fn say_hello_mut(&mut self, _val: i32) {}
         fn name(&self) -> &'static str;
         fn with_lifetime<'a>(&self, s: &'a str) -> &'a str {
             s
@@ -51,11 +56,8 @@ impl SayHello for Foo {
 #[derive(Debug, Clone)]
 pub struct Bar;
 impl SayHello for Bar {
-    fn say_hello(&self) -> impl Future<Output = ()> {
-        async { println!("Hello from Bar") }
-    }
-    fn say_hello_send(&self) -> impl Future<Output = ()> + Send {
-        async { println!("Hello send from Bar") }
+    async fn say_hello(&self) {
+        println!("Hello from Bar")
     }
     fn name(&self) -> &'static str {
         "Bar"
@@ -81,9 +83,6 @@ impl SayHello for Buz {
     async fn say_hello(&self) {
         println!("Hello from Buz")
     }
-    fn say_hello_send(&self) -> impl Future<Output = ()> + Send {
-        async { println!("Hello send from Buz") }
-    }
     fn name(&self) -> &'static str {
         "Buz"
     }
@@ -105,7 +104,6 @@ fn main() {
     smol::block_on(async {
         let foo_or_bar = FooOrBar::Foo(Foo);
         foo_or_bar.say_hello().await;
-        foo_or_bar.say_hello_send().await;
         println!("name: {}", foo_or_bar.name());
         println!("with_lifetime: {}", foo_or_bar.with_lifetime("test"));
         println!("with_generic: {}", foo_or_bar.with_generic(42));

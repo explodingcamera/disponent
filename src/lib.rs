@@ -3,10 +3,10 @@ mod forward;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{
+    Result,
     parse::{Parse, ParseStream},
     parse_macro_input,
     spanned::Spanned,
-    Result,
 };
 
 #[derive(Default)]
