@@ -8,7 +8,6 @@
 use disponent::declare;
 
 declare!(
-    #[disponent::configure(inherent, inline)]
     pub enum FooOrBar {
         Foo(Foo),
         Bar(Bar),
@@ -39,6 +38,13 @@ impl SayHello for Bar {
         println!("Hello from Bar")
     }
     fn name(&self) -> &'static str { "Bar" }
+}
+
+fn main() {
+    // `FooOrBar` implements `SayHello` by delegating to the inner type
+    let foo_or_bar = FooOrBar::Foo(Foo);
+    smol::block_on(foo_or_bar.say_hello());
+    println!("My name is {}", foo_or_bar.name());
 }
 ```
 

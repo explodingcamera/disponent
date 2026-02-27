@@ -1,3 +1,4 @@
+mod convert;
 mod forward;
 
 use proc_macro2::TokenStream;
@@ -15,19 +16,6 @@ struct Configure {
     from: bool,
     try_into: bool,
     inline: bool,
-}
-
-#[allow(dead_code)]
-struct Remote {
-    path: syn::Path,
-}
-
-fn impl_from(_enum_def: &syn::ItemEnum) -> Result<TokenStream> {
-    Ok(Default::default())
-}
-
-fn impl_try_into(_enum_def: &syn::ItemEnum) -> Result<TokenStream> {
-    Ok(Default::default())
 }
 
 impl Parse for Configure {
@@ -108,12 +96,12 @@ impl Parse for Disponent {
         let forward_to_variant =
             forward::forward_to_variant(config.inherent, config.inline, &enum_def, &trait_def)?;
         let from_impl = if config.from {
-            impl_from(&enum_def)?
+            convert::impl_from(&enum_def)?
         } else {
             TokenStream::new()
         };
         let try_into_impl = if config.try_into {
-            impl_try_into(&enum_def)?
+            convert::impl_try_into(&enum_def)?
         } else {
             TokenStream::new()
         };
