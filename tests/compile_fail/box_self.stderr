@@ -2,4 +2,4 @@ error: Arbitrary self types like `Arc<Self>` or `Box<Self>` are not supported. U
  --> tests/compile_fail/box_self.rs:9:25
   |
 9 |         fn method(self: Box<Self>);
-  |                         ^^^
+  |                         ^^^^^^^^^

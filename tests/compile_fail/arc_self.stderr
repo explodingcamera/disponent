@@ -2,7 +2,7 @@ error: Arbitrary self types like `Arc<Self>` or `Box<Self>` are not supported. U
   --> tests/compile_fail/arc_self.rs:11:25
    |
 11 |         fn method(self: Arc<Self>);
-   |                         ^^^
+   |                         ^^^^^^^^^
 
 warning: unused import: `std::sync::Arc`
  --> tests/compile_fail/arc_self.rs:1:5
