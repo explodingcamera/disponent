@@ -7,6 +7,7 @@ pub fn forward_to_variant(
     inline: bool,
     enum_def: &syn::ItemEnum,
     trait_def: &syn::ItemTrait,
+    remote_path: Option<&syn::Path>,
 ) -> Result<TokenStream> {
     if !enum_def.generics.params.is_empty() && !trait_def.generics.params.is_empty() {
         return Err(syn::Error::new(
@@ -48,15 +49,14 @@ pub fn forward_to_variant(
     let (trait_impl_generics, trait_ty_generics, trait_where_clause) =
         trait_def.generics.split_for_impl();
     let enum_ident = &enum_def.ident;
-    let trait_ident = &trait_def.ident;
+    let local_trait_path: syn::Path = trait_def.ident.clone().into();
+    let trait_path = remote_path.unwrap_or(&local_trait_path);
 
     let variant_bounds: Vec<_> = if !trait_def.generics.params.is_empty() {
-        {
-            variants
-                .iter()
-                .map(|(_, ty, _)| quote! { #ty: #trait_ident #trait_ty_generics })
-                .collect()
-        }
+        variants
+            .iter()
+            .map(|(_, ty, _)| quote! { #ty: #trait_path #trait_ty_generics })
+            .collect()
     } else {
         Default::default()
     };
@@ -76,7 +76,7 @@ pub fn forward_to_variant(
                 inline,
                 m,
                 enum_ident,
-                trait_ident,
+                trait_path,
                 &variants,
                 trait_generics,
             )),
@@ -95,7 +95,7 @@ pub fn forward_to_variant(
             build_where_clause(enum_where_clause, trait_where_clause, &variant_bounds);
         quote! {
             #[automatically_derived]
-            impl #enum_impl_generics #trait_impl_generics #trait_ident #trait_ty_generics for #enum_ident #enum_ty_generics #where_clause { #(#methods)* }
+            impl #enum_impl_generics #trait_impl_generics #trait_path #trait_ty_generics for #enum_ident #enum_ty_generics #where_clause { #(#methods)* }
         }
     })
 }
@@ -105,7 +105,7 @@ fn generate_method(
     inline: bool,
     method: &syn::TraitItemFn,
     enum_ident: &syn::Ident,
-    trait_ident: &syn::Ident,
+    trait_path: &syn::Path,
     variants: &[(&syn::Ident, &syn::Type, &Vec<syn::Attribute>)],
     trait_generics: Option<(&syn::Generics, Option<&syn::WhereClause>, &Vec<TokenStream>)>,
 ) -> Result<TokenStream> {
@@ -206,7 +206,7 @@ fn generate_method(
     let method_ident = &sig.ident;
     let arms = variants.iter().map(|(v, _, attrs)| {
         let variant_attrs = attrs.iter().filter(|a| is_attr_allowed(a, false));
-        let call = quote! { #trait_ident::#method_ident(#inner, #(#args),*) };
+        let call = quote! { #trait_path::#method_ident(#inner, #(#args),*) };
         let call = is_async.then(|| quote! { #call.await }).unwrap_or(call);
         quote! { #(#variant_attrs)* #enum_ident::#v(#inner) => #call, }
     });

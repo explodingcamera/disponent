@@ -62,6 +62,26 @@ Apply `#[disponent::configure(...)]` to the enum with any combination of:
 - `from`: Generate `From` impls for each variant
 - `try_into`: Generate `TryInto` impls for each variant
 
+### Remote Traits
+
+Use `#[disponent::remote(path::to::Trait)]` on the trait to forward to a trait defined elsewhere:
+
+```rust
+use external_crate::ExternalTrait;
+
+declare!(
+    pub enum MyEnum {
+        Foo(Foo),
+        Bar(Bar),
+    }
+
+    #[disponent::remote(ExternalTrait)]
+    trait LocalTraitMirror {
+        fn method(&self);
+    }
+);
+```
+
 ## Generated Code
 
 The above example generates the following code:
