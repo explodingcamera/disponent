@@ -1,6 +1,11 @@
-# `disponent` - ergonomic enum delegation
+# `disponent`
 
-`disponent` is an alternative to using `dyn Trait` trait objects for dispatching to multiple implementations of a trait. Works with async methods, generics, `#[cfg]` attributes, and even traits that are not object safe.
+[<img alt="github" src="https://img.shields.io/badge/github-explodingcamera/disponent-8da0cb?style=flat-square&labelColor=555555&logo=github" height="20">](https://github.com/explodingcamera/disponent)
+[<img alt="crates.io" src="https://img.shields.io/crates/v/disponent.svg?style=flat-square&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/disponent)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-disponent-66c2a5?style=flat-square&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/disponent)
+[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/explodingcamera/disponent/ci.yml?branch=main&style=flat-square" height="20">](https://github.com/explodingcamera/disponent/actions?query=branch%3Amain)
+
+`disponent` is an alternative to using `dyn Trait` trait objects for dispatching to multiple implementations of a trait. Works with async methods, generics, `#[cfg]` attributes, `no_std` and even traits that are not object safe.
 
 ## Usage
 
