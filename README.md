@@ -1,6 +1,6 @@
 # `disponent` - ergonomic enum delegation
 
-`disponent` is an alternative to using `dyn Trait` trait objects for dispatching to multiple implementations of a trait, without the need for object safety.
+`disponent` is an alternative to using `dyn Trait` trait objects for dispatching to multiple implementations of a trait. Works with async methods, generics, `#[cfg]` attributes, and even traits that are not object safe.
 
 ## Usage
 
@@ -57,6 +57,36 @@ Apply `#[disponent::configure(...)]` to the enum with any combination of:
 - `from`: Generate `From` impls for each variant
 - `try_into`: Generate `TryInto` impls for each variant
 
+## Generated Code
+
+The above example generates the following code:
+
+```rust
+#[automatically_derived]
+impl SayHello for FooOrBar {
+    async fn say_hello(&self) -> () {
+        match self {
+            FooOrBar::Foo(inner) => SayHello::say_hello(inner).await,
+            FooOrBar::Bar(inner) => SayHello::say_hello(inner).await,
+        }
+    }
+    fn name(&self) -> &'static str {
+        match self {
+            FooOrBar::Foo(inner) => SayHello::name(inner),
+            FooOrBar::Bar(inner) => SayHello::name(inner),
+        }
+    }
+    fn with_default(&self) -> &'static str {
+        match self {
+            FooOrBar::Foo(inner) => SayHello::with_default(inner),
+            FooOrBar::Bar(inner) => SayHello::with_default(inner),
+        }
+    }
+}
+```
+
+In many cases, this can be substantially faster than using `dyn Trait` trait objects, especially when the enum is small and the methods are simple. See [the benchmarks of `enum_dispatch`](https://docs.rs/enum_dispatch/latest/enum_dispatch/#performance) for more details (benchmarks for `disponent` are coming soon).
+
 ## See also
 
 - [**`declarative_enum_dispatch`**](https://crates.io/crates/declarative_enum_dispatch)
@@ -67,3 +97,9 @@ Apply `#[disponent::configure(...)]` to the enum with any combination of:
 - [**`delegation`**](https://crates.io/crates/delegation)
 
 With the exception of `declarative_enum_dispatch`, these crates all share state between macro invocations, which can lead to issues with `rust-analyzer` and similar tools. `disponent` avoids this by generating all code in a single macro invocation, at the cost of some flexibility in how the traits are defined (all while `rust-fmt` and error reporting works like normal).
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](./LICENSE-APACHE) or [MIT license](./LICENSE-MIT) at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in disponent by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

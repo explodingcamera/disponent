@@ -1,8 +1,3 @@
-// TODO: support for remote traits
-// TODO: support for multiple traits and/or traits in the same macro invocation
-// TODO: add a inherent(visibility) option to inherent to override the visibility of the generated inherent impl
-// e.g `inherent(pub)`, `inherent(pub(crate))`, `inherent(pub(super))`, `inherent` (same as enum)
-
 disponent::declare!(
     #[disponent::configure(inherent, inline, from, try_into)]
     #[derive(Debug, Clone)]

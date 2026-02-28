@@ -190,23 +190,27 @@ pub fn configure(
     out
 }
 
-/// Specify a remote trait to use that matches the definition of the trait in the `disponent` macro.\
-/// The path should be the full path to the trait, including the crate name if it's from another crate.\
-///
-/// This can be useful when using a trait from another crate or module.
-///
-/// # Example
-/// ```rust
-/// #[disponent::remote(crate::SayHello)]
-/// trait SayHello {
-///    fn say_hello(&self) -> impl Future<Output = ()>;
-/// }
-/// ```
-#[proc_macro_attribute]
-pub fn remote(
-    _input: proc_macro::TokenStream,
-    out: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    // this is just used to make rust-analyzer happy, the actual parsing is done in the `disponent` macro
-    out
-}
+// TODO: support for multiple traits and/or traits in the same macro invocation
+// TODO: add a inherent(visibility) option to inherent to override the visibility of the generated inherent impl
+// e.g `inherent(pub)`, `inherent(pub(crate))`, `inherent(pub(super))`, `inherent` (same as enum)
+// TODO: support for remote traits
+// /// Specify a remote trait to use that matches the definition of the trait in the `disponent` macro.\
+// /// The path should be the full path to the trait, including the crate name if it's from another crate.\
+// ///
+// /// This can be useful when using a trait from another crate or module.
+// ///
+// /// # Example
+// /// ```rust
+// /// #[disponent::remote(crate::SayHello)]
+// /// trait SayHello {
+// ///    fn say_hello(&self) -> impl Future<Output = ()>;
+// /// }
+// /// ```
+// #[proc_macro_attribute]
+// pub fn remote(
+//     _input: proc_macro::TokenStream,
+//     out: proc_macro::TokenStream,
+// ) -> proc_macro::TokenStream {
+//     // this is just used to make rust-analyzer happy, the actual parsing is done in the `disponent` macro
+//     out
+// }
