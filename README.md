@@ -114,12 +114,14 @@ In many cases, this can be substantially faster than using `dyn Trait` trait obj
 
 ## See also
 
+- [**`ambassador`**](https://crates.io/crates/ambassador)
 - [**`declarative_enum_dispatch`**](https://crates.io/crates/declarative_enum_dispatch)
+- [**`delegate`**](https://crates.io/crates/delegate)
+- [**`delegation`**](https://crates.io/crates/delegation)
 - [**`enum_delegate`**](https://crates.io/crates/enum_delegate)
 - [**`enum_dispatch`**](https://crates.io/crates/enum_dispatch)
-- [**`enum_derive`**](https://crates.io/crates/enum_derive)
-- [**`ambassador`**](https://crates.io/crates/ambassador)
-- [**`delegation`**](https://crates.io/crates/delegation)
+- [**`polymorphic_enum`**](https://crates.io/crates/polymorphic_enum)
+- [**`spire_enum`**](https://crates.io/crates/spire_enum)
 
 With the exception of `declarative_enum_dispatch`, these crates all share state between macro invocations, which can lead to issues with `rust-analyzer` and similar tools. `disponent` avoids this by generating all code in a single macro invocation, at the cost of some flexibility in how the traits are defined (all while `rust-fmt` and error reporting works like normal).
 
