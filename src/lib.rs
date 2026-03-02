@@ -51,9 +51,14 @@ use syn::{
     spanned::Spanned,
 };
 
+enum InherentConfig {
+    Inherit,
+    Explicit(syn::Visibility),
+}
+
 #[derive(Default)]
 struct Configure {
-    inherent: bool,
+    inherent: Option<InherentConfig>,
     from: bool,
     try_into: bool,
     inline: bool,
@@ -73,7 +78,7 @@ impl Parse for Remote {
 
 impl Parse for Configure {
     fn parse(input: ParseStream) -> Result<Self> {
-        let mut inherent = false;
+        let mut inherent: Option<InherentConfig> = None;
         let mut from = false;
         let mut try_into = false;
         let mut inline = false;
@@ -81,7 +86,16 @@ impl Parse for Configure {
         while !input.is_empty() {
             let ident: syn::Ident = input.parse()?;
             match ident.to_string().as_str() {
-                "inherent" => inherent = true,
+                "inherent" => {
+                    if input.peek(syn::token::Paren) {
+                        let content;
+                        syn::parenthesized!(content in input);
+                        let vis: syn::Visibility = content.parse()?;
+                        inherent = Some(InherentConfig::Explicit(vis));
+                    } else {
+                        inherent = Some(InherentConfig::Inherit);
+                    }
+                }
                 "from" => from = true,
                 "try_into" => try_into = true,
                 "inline" => inline = true,
@@ -110,17 +124,21 @@ struct Disponent(TokenStream);
 
 impl Parse for Disponent {
     fn parse(input: ParseStream) -> Result<Self> {
-        let input = input.parse::<TokenStream>()?;
+        let input: TokenStream = input.parse()?;
+        let out = input.clone();
 
-        let mut items = match syn::parse2::<syn::File>(input.clone()) {
+        let items = match syn::parse2::<syn::File>(input) {
             Ok(f) => f.items,
-            Err(_) => return Ok(Disponent(input)),
+            Err(_) => return Ok(Disponent(out)),
         };
 
-        let trait_idx = items
+        let trait_def = items
             .iter()
-            .position(|item| matches!(item, syn::Item::Trait(_)))
-            .ok_or_else(|| syn::Error::new(input.span(), "Missing trait definition"))?;
+            .find_map(|item| match item {
+                syn::Item::Trait(t) => Some(t.clone()),
+                _ => None,
+            })
+            .ok_or_else(|| syn::Error::new(out.span(), "Missing trait definition"))?;
 
         let enum_def = items
             .iter()
@@ -128,7 +146,7 @@ impl Parse for Disponent {
                 syn::Item::Enum(e) => Some(e.clone()),
                 _ => None,
             })
-            .ok_or_else(|| syn::Error::new(input.span(), "Missing enum definition"))?;
+            .ok_or_else(|| syn::Error::new(out.span(), "Missing enum definition"))?;
 
         let config = enum_def
             .attrs
@@ -143,56 +161,41 @@ impl Parse for Disponent {
             .transpose()?
             .unwrap_or_default();
 
-        let remote_path = if let syn::Item::Trait(trait_def) = &mut items[trait_idx] {
-            let remote_attr_idx = trait_def.attrs.iter().position(|attr| {
+        let remote_path = trait_def
+            .attrs
+            .iter()
+            .find(|attr| {
                 attr.path()
                     .segments
                     .last()
                     .is_some_and(|segment| segment.ident == "remote")
-            });
-
-            if let Some(idx) = remote_attr_idx {
-                let remote_attr = trait_def.attrs.remove(idx);
-                let remote = remote_attr.parse_args::<Remote>()?;
-                trait_def.ident = quote::format_ident!("{}Remote", trait_def.ident);
-                trait_def.attrs.push(syn::parse_quote!(#[allow(dead_code)]));
-                trait_def.attrs.push(syn::parse_quote!(#[doc(hidden)]));
-                Some(remote.path)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let trait_def = match &items[trait_idx] {
-            syn::Item::Trait(t) => t.clone(),
-            _ => unreachable!(),
-        };
+            })
+            .map(|attr| attr.parse_args::<Remote>())
+            .transpose()?
+            .map(|remote| remote.path);
 
         let forward_to_variant = forward::forward_to_variant(
-            config.inherent,
+            config.inherent.as_ref(),
             config.inline,
             &enum_def,
             &trait_def,
             remote_path.as_ref(),
         )?;
+
         let from_impl = if config.from {
             convert::impl_from(&enum_def)?
         } else {
             TokenStream::new()
         };
+
         let try_into_impl = if config.try_into {
             convert::impl_try_into(&enum_def)?
         } else {
             TokenStream::new()
         };
 
-        let modified_input: TokenStream = items.iter().map(|i| i.to_token_stream()).collect();
-
         let definition = quote::quote! {
-            #modified_input
-
+            #out
             #forward_to_variant
             #from_impl
             #try_into_impl
@@ -245,7 +248,8 @@ pub fn declare(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// Configure the enum forwarding behavior.
 ///
 /// Apply to the enum within [`declare!`] with any combination of:
-/// - `inherent`: Generate inherent methods on the enum (vs trait impl)
+/// - `inherent`: Generate inherent methods on the enum with the same visibility as the enum
+/// - `inherent(<visibility>)`: Generate inherent methods with explicit visibility (e.g., `inherent(pub)`, `inherent(pub(crate))`)
 /// - `inline`: Add `#[inline]` to all generated methods
 /// - `from`: Generate `From` impls for each variant
 /// - `try_into`: Generate `TryInto` impls for each variant
@@ -274,13 +278,26 @@ pub fn configure(
     _input: proc_macro::TokenStream,
     out: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    // this is just used to make rust-analyzer happy, the actual parsing is done in the [`declare`] macro
-    out
+    let mut item = match syn::parse(out.clone()) {
+        Ok(syn::Item::Enum(enum_def)) => enum_def,
+        _ => {
+            return quote::quote! {
+                compile_error!("The #[disponent::configure] attribute can only be applied to enums within the declare! macro");
+            }.into();
+        }
+    };
+
+    item.attrs.retain(|attr| {
+        attr.path()
+            .segments
+            .last()
+            .is_none_or(|segment| segment.ident != "configure")
+    });
+
+    quote::quote!(#item).into()
 }
 
 // TODO: support for multiple traits and/or traits in the same macro invocation
-// TODO: add a inherent(visibility) option to inherent to override the visibility of the generated inherent impl
-// e.g `inherent(pub)`, `inherent(pub(crate))`, `inherent(pub(super))`, `inherent` (same as enum)
 
 /// Use a remote trait instead of the declared trait.
 ///
@@ -312,6 +329,16 @@ pub fn remote(
     _input: proc_macro::TokenStream,
     out: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    // this is just used to make rust-analyzer happy, the actual parsing is done in the [`declare`] macro
-    out
+    let mut item = match syn::parse(out.clone()) {
+        Ok(syn::Item::Trait(trait_def)) => trait_def,
+        _ => {
+            return quote::quote! {
+                compile_error!("The #[disponent::remote] attribute can only be applied to traits within the declare! macro");
+            }.into();
+        }
+    };
+
+    item.attrs.push(syn::parse_quote!(#[doc(hidden)]));
+    item.attrs.push(syn::parse_quote!(#[allow(unused)]));
+    quote::quote!(#item).into()
 }

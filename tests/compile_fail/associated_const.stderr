@@ -1,0 +1,5 @@
+error: Associated constants not supported
+ --> tests/compile_fail/associated_const.rs:7:9
+  |
+7 |         const VALUE: usize;
+  |         ^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,7 @@
+error: The #[disponent::remote] attribute can only be applied to traits within the declare! macro
+ --> tests/compile_fail/remote_on_enum.rs:1:1
+  |
+1 | #[disponent::remote(SomeTrait)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `disponent::remote` (in Nightly builds, run with -Z macro-backtrace for more info)

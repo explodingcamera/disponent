@@ -106,7 +106,7 @@ fn main() {
         let foo_or_bar = FooOrBar::Bar(Bar);
         foo_or_bar.say_hello().await;
         println!("name: {}", foo_or_bar.name());
-        println!("with_generic: {}", foo_or_bar.with_generic(3.14));
+        println!("with_generic: {}", foo_or_bar.with_generic(1.23));
         println!("with_default: {}", foo_or_bar.with_default());
 
         let consumed = foo_or_bar.consume();

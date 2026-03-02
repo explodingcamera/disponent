@@ -2,8 +2,10 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Result, spanned::Spanned};
 
+use crate::InherentConfig;
+
 pub fn forward_to_variant(
-    inherent: bool,
+    inherent: Option<&InherentConfig>,
     inline: bool,
     enum_def: &syn::ItemEnum,
     trait_def: &syn::ItemTrait,
@@ -61,18 +63,23 @@ pub fn forward_to_variant(
         Default::default()
     };
 
-    let trait_generics = (inherent && !trait_def.generics.params.is_empty()).then_some((
+    let trait_generics = (inherent.is_some() && !trait_def.generics.params.is_empty()).then_some((
         &trait_def.generics,
         trait_where_clause,
         &variant_bounds,
     ));
+
+    let inherent_vis = inherent.map(|i| match i {
+        InherentConfig::Inherit => &enum_def.vis,
+        InherentConfig::Explicit(vis) => vis,
+    });
 
     let methods: Vec<_> = trait_def
         .items
         .iter()
         .filter_map(|item| match item {
             syn::TraitItem::Fn(m) => Some(generate_method(
-                inherent,
+                inherent_vis,
                 inline,
                 m,
                 enum_ident,
@@ -84,7 +91,7 @@ pub fn forward_to_variant(
         })
         .collect::<Result<_>>()?;
 
-    Ok(if inherent {
+    Ok(if inherent.is_some() {
         let where_clause = build_where_clause(enum_where_clause, None, &[]);
         quote! {
             #[automatically_derived]
@@ -101,7 +108,7 @@ pub fn forward_to_variant(
 }
 
 fn generate_method(
-    inherent: bool,
+    inherent: Option<&syn::Visibility>,
     inline: bool,
     method: &syn::TraitItemFn,
     enum_ident: &syn::Ident,
@@ -192,7 +199,7 @@ fn generate_method(
     }
 
     let attrs = method.attrs.iter().filter(|a| is_attr_allowed(a, true));
-    let vis = inherent.then(|| quote! { pub });
+    let vis = inherent.map(|v| quote! { #v });
     let args: Vec<_> = sig
         .inputs
         .iter()

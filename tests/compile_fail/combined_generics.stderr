@@ -1,0 +1,5 @@
+error: Cannot combine enum and trait generics
+ --> tests/compile_fail/combined_generics.rs:2:22
+  |
+2 |     pub enum FooOrBar<T> {
+  |                      ^^^

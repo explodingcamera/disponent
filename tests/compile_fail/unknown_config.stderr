@@ -1,0 +1,5 @@
+error: Unknown configuration option
+ --> tests/compile_fail/unknown_config.rs:2:28
+  |
+2 |     #[disponent::configure(unknown_option)]
+  |                            ^^^^^^^^^^^^^^

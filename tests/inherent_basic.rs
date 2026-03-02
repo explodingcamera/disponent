@@ -43,6 +43,7 @@ impl SayHello for Foo {
 pub struct Bar;
 
 impl SayHello for Bar {
+    #[allow(clippy::manual_async_fn)]
     fn say_hello(&self) -> impl Future<Output = ()> {
         async { println!("Hello from Bar") }
     }
@@ -91,7 +92,7 @@ fn test_with_generic() {
     let bar = FooOrBar::Bar(Bar);
 
     assert_eq!(foo.with_generic(42), "Foo: 42");
-    assert_eq!(bar.with_generic(3.14), "Bar: 3.14");
+    assert_eq!(bar.with_generic(1.23), "Bar: 1.23");
 }
 
 #[test]

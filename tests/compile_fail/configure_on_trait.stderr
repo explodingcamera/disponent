@@ -1,0 +1,7 @@
+error: The #[disponent::configure] attribute can only be applied to enums within the declare! macro
+ --> tests/compile_fail/configure_on_trait.rs:1:1
+  |
+1 | #[disponent::configure(inherent)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `disponent::configure` (in Nightly builds, run with -Z macro-backtrace for more info)
