@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.2] - 2026-03-09
 
-- Reduced MSRV to Rust 1.81.1
+- Reduced MSRV to Rust 1.85.1
 
 ## [0.2.1] - 2026-03-02
 
@@ -15,8 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed rust-analyzer not recognizing attribute macros
 
 ## [0.2.0] - 2026-02-28
-
-### Added
 
 - Added support for remote traits with `#[disponent::remote]`
 
