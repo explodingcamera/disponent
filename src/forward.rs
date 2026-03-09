@@ -188,13 +188,13 @@ fn generate_method(
         syn::FnArg::Typed(p) => Some(p),
         _ => None,
     }) {
-        if let syn::Pat::Ident(pat) = &*p.pat
-            && pat.ident == inner
-        {
-            return Err(syn::Error::new(
-                pat.ident.span(),
-                "Parameter name `__disponent_inner` is reserved. Use a different name.",
-            ));
+        if let syn::Pat::Ident(pat) = &*p.pat {
+            if pat.ident == inner {
+                return Err(syn::Error::new(
+                    pat.ident.span(),
+                    "Parameter name `__disponent_inner` is reserved. Use a different name.",
+                ));
+            }
         }
     }
 

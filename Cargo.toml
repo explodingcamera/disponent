@@ -5,7 +5,7 @@ edition="2024"
 repository="https://github.com/explodingcamera/disponent"
 authors=["Henry Gressmann <crates@henrygressmann.de>"]
 license="MIT OR Apache-2.0"
-rust-version="1.90"
+rust-version="1.85"
 description="An alternative to dynamic-dispatched method calls, without the need for object safety"
 keywords=["traits", "dynamic", "enum", "optimization"]
 categories=["rust-patterns", "development-tools::procedural-macro-helpers"]
@@ -16,7 +16,13 @@ proc-macro=true
 [dependencies]
 proc-macro2="^1.0"
 quote="^1.0"
-syn={version="^2.0", features=["full"]}
+syn={version="^2.0", default-features=false, features=[
+    "full",
+    "clone-impls",
+    "parsing",
+    "printing",
+    "proc-macro",
+]}
 
 [dev-dependencies]
 smol="2.0"
