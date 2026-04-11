@@ -156,14 +156,15 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
     let has_receiver = sig.receiver().is_some();
 
     // Check for unsupported self types like `self: Arc<Self>`
-    if has_receiver
-        && let Some(receiver) = sig.receiver()
-        && is_wrapped_self(&receiver.ty)
-    {
-        return Err(syn::Error::new(
-            receiver.ty.span(),
-            "Arbitrary self types like `Arc<Self>` or `Box<Self>` are not supported. Use `self`, `&self`, or `&mut self` instead.",
-        ));
+    if has_receiver {
+        if let Some(receiver) = sig.receiver() {
+            if is_wrapped_self(&receiver.ty) {
+                return Err(syn::Error::new(
+                    receiver.ty.span(),
+                    "Arbitrary self types like `Arc<Self>` or `Box<Self>` are not supported. Use `self`, `&self`, or `&mut self` instead.",
+                ));
+            }
+        }
     }
 
     if !has_receiver && fallback_variant.is_none() {
@@ -223,16 +224,17 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
         replace_self_with(t, &enum_self_ty);
     }
 
-    if !has_receiver
-        && let Some((_, fallback_ty)) = fallback_variant
-        && let Some(where_clause) = &mut sig.generics.where_clause
-    {
-        for predicate in &mut where_clause.predicates {
-            if let syn::WherePredicate::Type(ty_pred) = predicate {
-                replace_self_with(&mut ty_pred.bounded_ty, fallback_ty);
-                for bound in &mut ty_pred.bounds {
-                    if let syn::TypeParamBound::Trait(trait_bound) = bound {
-                        replace_self_in_path(&mut trait_bound.path, fallback_ty);
+    if !has_receiver {
+        if let Some((_, fallback_ty)) = fallback_variant {
+            if let Some(where_clause) = &mut sig.generics.where_clause {
+                for predicate in &mut where_clause.predicates {
+                    if let syn::WherePredicate::Type(ty_pred) = predicate {
+                        replace_self_with(&mut ty_pred.bounded_ty, fallback_ty);
+                        for bound in &mut ty_pred.bounds {
+                            if let syn::TypeParamBound::Trait(trait_bound) = bound {
+                                replace_self_in_path(&mut trait_bound.path, fallback_ty);
+                            }
+                        }
                     }
                 }
             }
@@ -319,10 +321,7 @@ fn generic_param_name(p: &syn::GenericParam) -> &syn::Ident {
     }
 }
 
-fn typed_inputs(
-    sig: &syn::Signature,
-    has_receiver: bool,
-) -> impl Iterator<Item = &syn::PatType> {
+fn typed_inputs(sig: &syn::Signature, has_receiver: bool) -> impl Iterator<Item = &syn::PatType> {
     sig.inputs
         .iter()
         .skip(usize::from(has_receiver))
