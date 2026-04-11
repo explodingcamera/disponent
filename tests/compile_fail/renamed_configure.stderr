@@ -1,0 +1,13 @@
+error: Inside declare!, use #[configure(...)] or #[disponent::configure(...)] (do not rename configure)
+ --> tests/compile_fail/renamed_configure.rs:4:7
+  |
+4 |     #[myconfigure(inherent)]
+  |       ^^^^^^^^^^^
+
+warning: unused import: `disponent::configure as myconfigure`
+ --> tests/compile_fail/renamed_configure.rs:1:5
+  |
+1 | use disponent::configure as myconfigure;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

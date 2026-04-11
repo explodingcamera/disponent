@@ -1,0 +1,5 @@
+error: Only one enum variant can be marked with #[fallback]
+ --> tests/compile_fail/multiple_fallback_variants.rs:3:14
+  |
+3 |     pub enum Factory {
+  |              ^^^^^^^

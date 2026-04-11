@@ -59,8 +59,8 @@ Apply `#[disponent::configure(...)]` to the enum with any combination of:
 
 - `inherent`: Generate inherent methods on the enum (vs trait impl)
 - `inline`: Add `#[inline]` to all generated methods
-- `from`: Generate `From` impls for each variant
-- `try_into`: Generate `TryInto` impls for each variant
+- `from`: Generate `From` impls for each variant via `From<VariantInner> for Enum`
+- `try_into`: Generate conversion support via `TryFrom<Enum> for VariantInner`
 
 ### Remote Traits
 

@@ -32,17 +32,25 @@
 //! Use [`#[disponent::configure(...)]`][configure] on the enum with:
 //! - `inherent`: Generate inherent methods (vs trait impl)
 //! - `inline`: Add `#[inline]` to methods
-//! - `from`: Generate `From<T> for Enum` impls
-//! - `try_into`: Generate `TryInto<T> for Enum` impls
+//! - `from`: Generate `From` impls for each variant via `From<VariantInner> for Enum`
+//! - `try_into`: Generate conversion support via `TryFrom<Enum> for VariantInner`
 //!
 //! ## Remote Traits
 //!
 //! Use [`#[disponent::remote(...)]`][remote] on the trait to implement a trait defined elsewhere.
+//!
+//! ## Fallback Variant for Methods Without Receiver
+//!
+//! For trait methods without a receiver (for example `fn make() -> Self`), mark exactly one enum
+//! variant with `#[fallback]`.
+//!
+//! `disponent` forwards no-receiver methods to the fallback variant's inner type. For `-> Self`,
+//! the inner return value is wrapped into the fallback enum variant.
 
 mod convert;
 mod forward;
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::ToTokens;
 use syn::{
     Result,
@@ -127,10 +135,11 @@ impl Parse for Disponent {
         let input: TokenStream = input.parse()?;
         let out = input.clone();
 
-        let items = match syn::parse2::<syn::File>(input) {
-            Ok(f) => f.items,
+        let file = match syn::parse2::<syn::File>(input) {
+            Ok(f) => f,
             Err(_) => return Ok(Disponent(out)),
         };
+        let items = &file.items;
 
         let trait_def = items
             .iter()
@@ -147,6 +156,33 @@ impl Parse for Disponent {
                 _ => None,
             })
             .ok_or_else(|| syn::Error::new(out.span(), "Missing enum definition"))?;
+
+        for attr in &enum_def.attrs {
+            let is_configure = attr
+                .path()
+                .segments
+                .last()
+                .is_some_and(|segment| segment.ident == "configure");
+            let path = attr.path();
+            let is_allowed_configure_path = path.is_ident("configure")
+                || (path.segments.len() == 2
+                    && path.segments[0].ident == "disponent"
+                    && path.segments[1].ident == "configure");
+
+            if is_configure && !is_allowed_configure_path {
+                return Err(syn::Error::new(
+                    path.span(),
+                    "Inside declare!, use #[configure(...)] or #[disponent::configure(...)] (do not rename configure)",
+                ));
+            }
+
+            if !is_allowed_configure_path && attr.parse_args::<Configure>().is_ok() {
+                return Err(syn::Error::new(
+                    path.span(),
+                    "Inside declare!, use #[configure(...)] or #[disponent::configure(...)] (do not rename configure)",
+                ));
+            }
+        }
 
         let config = enum_def
             .attrs
@@ -194,8 +230,21 @@ impl Parse for Disponent {
             TokenStream::new()
         };
 
+        let has_fallback_attr = enum_def.variants.iter().any(|variant| {
+            variant
+                .attrs
+                .iter()
+                .any(|attr| attr.path().is_ident("fallback"))
+        });
+
+        let declaration_input = if has_fallback_attr {
+            strip_fallback_attrs(out.clone())
+        } else {
+            out
+        };
+
         let definition = quote::quote! {
-            #out
+            #declaration_input
             #forward_to_variant
             #from_impl
             #try_into_impl
@@ -211,10 +260,63 @@ impl ToTokens for Disponent {
     }
 }
 
+fn strip_fallback_attrs(tokens: TokenStream) -> TokenStream {
+    strip_fallback_attrs_inner(tokens).0
+}
+
+fn strip_fallback_attrs_inner(tokens: TokenStream) -> (TokenStream, bool) {
+    let mut out = TokenStream::new();
+    let mut iter = tokens.into_iter().peekable();
+    let mut changed = false;
+
+    while let Some(token) = iter.next() {
+        match token {
+            TokenTree::Punct(punct) if punct.as_char() == '#' => {
+                let should_strip = iter.peek().and_then(|next| match next {
+                    TokenTree::Group(group) if group.delimiter() == Delimiter::Bracket => {
+                        Some(is_fallback_attr_group(group))
+                    }
+                    _ => None,
+                });
+
+                if should_strip == Some(true) {
+                    iter.next();
+                    changed = true;
+                    continue;
+                }
+
+                out.extend(std::iter::once(TokenTree::Punct(punct)));
+            }
+            TokenTree::Group(group) => {
+                let (inner, inner_changed) = strip_fallback_attrs_inner(group.stream());
+                if inner_changed {
+                    changed = true;
+                    let mut rewritten = Group::new(group.delimiter(), inner);
+                    rewritten.set_span(group.span());
+                    out.extend(std::iter::once(TokenTree::Group(rewritten)));
+                } else {
+                    out.extend(std::iter::once(TokenTree::Group(group)));
+                }
+            }
+            other => out.extend(std::iter::once(other)),
+        }
+    }
+
+    (out, changed)
+}
+
+fn is_fallback_attr_group(group: &Group) -> bool {
+    syn::parse2::<syn::Path>(group.stream())
+        .map(|path| path.is_ident("fallback"))
+        .unwrap_or(false)
+}
+
 /// Declare a trait and enum together, generating forwarding methods.
 ///
 /// Enum variants must be newtype fields (single unnamed field). Each variant's inner type
 /// must implement the declared trait.
+///
+/// Methods without a receiver require exactly one enum variant marked `#[fallback]`.
 ///
 /// Use [`#[disponent::configure(...)]`][configure] on the enum for options like `inherent` or `from`.
 /// Use [`#[disponent::remote(...)]`][remote] on the trait to implement a remote trait.
@@ -252,7 +354,7 @@ pub fn declare(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// - `inherent(<visibility>)`: Generate inherent methods with explicit visibility (e.g., `inherent(pub)`, `inherent(pub(crate))`)
 /// - `inline`: Add `#[inline]` to all generated methods
 /// - `from`: Generate `From` impls for each variant
-/// - `try_into`: Generate `TryInto` impls for each variant
+/// - `try_into`: Generate `TryFrom<Enum> for VariantInner` impls (enables `.try_into()` via blanket impl)
 ///
 /// # Example
 ///

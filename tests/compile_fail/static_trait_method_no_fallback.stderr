@@ -1,0 +1,5 @@
+error: Methods without a receiver require a #[fallback] enum variant
+ --> tests/compile_fail/static_trait_method_no_fallback.rs:9:12
+  |
+9 |         fn make() -> Self;
+  |            ^^^^

@@ -4,6 +4,21 @@ use syn::{Result, spanned::Spanned};
 
 use crate::InherentConfig;
 
+struct ForwardCtx<'a> {
+    inherent_vis: Option<&'a syn::Visibility>,
+    inline: bool,
+    enum_ident: &'a syn::Ident,
+    trait_path: &'a syn::Path,
+    trait_ty_generics: &'a syn::TypeGenerics<'a>,
+    variants: &'a [(&'a syn::Ident, &'a syn::Type, &'a Vec<syn::Attribute>)],
+    fallback_variant: Option<(&'a syn::Ident, &'a syn::Type)>,
+    trait_generics: Option<(
+        &'a syn::Generics,
+        Option<&'a syn::WhereClause>,
+        &'a Vec<TokenStream>,
+    )>,
+}
+
 pub fn forward_to_variant(
     inherent: Option<&InherentConfig>,
     inline: bool,
@@ -28,7 +43,7 @@ pub fn forward_to_variant(
         }
     }
 
-    let variants: Vec<_> = enum_def
+    let variants: Vec<(&syn::Ident, &syn::Type, &Vec<syn::Attribute>)> = enum_def
         .variants
         .iter()
         .filter_map(|v| match &v.fields {
@@ -38,6 +53,20 @@ pub fn forward_to_variant(
             _ => None,
         })
         .collect();
+
+    let fallback_variants: Vec<_> = variants
+        .iter()
+        .filter(|(_, _, attrs)| attrs.iter().any(is_fallback_attr))
+        .collect();
+    if fallback_variants.len() > 1 {
+        return Err(syn::Error::new(
+            enum_def.ident.span(),
+            "Only one enum variant can be marked with #[fallback]",
+        ));
+    }
+    let fallback_variant = fallback_variants
+        .first()
+        .map(|(ident, ty, _)| (*ident, *ty));
 
     if variants.len() != enum_def.variants.len() {
         return Err(syn::Error::new(
@@ -74,19 +103,22 @@ pub fn forward_to_variant(
         InherentConfig::Explicit(vis) => vis,
     });
 
+    let ctx = ForwardCtx {
+        inherent_vis,
+        inline,
+        enum_ident,
+        trait_path,
+        trait_ty_generics: &trait_ty_generics,
+        variants: &variants,
+        fallback_variant,
+        trait_generics,
+    };
+
     let methods: Vec<_> = trait_def
         .items
         .iter()
         .filter_map(|item| match item {
-            syn::TraitItem::Fn(m) => Some(generate_method(
-                inherent_vis,
-                inline,
-                m,
-                enum_ident,
-                trait_path,
-                &variants,
-                trait_generics,
-            )),
+            syn::TraitItem::Fn(m) => Some(generate_method(m, &ctx)),
             _ => None,
         })
         .collect::<Result<_>>()?;
@@ -107,27 +139,37 @@ pub fn forward_to_variant(
     })
 }
 
-fn generate_method(
-    inherent: Option<&syn::Visibility>,
-    inline: bool,
-    method: &syn::TraitItemFn,
-    enum_ident: &syn::Ident,
-    trait_path: &syn::Path,
-    variants: &[(&syn::Ident, &syn::Type, &Vec<syn::Attribute>)],
-    trait_generics: Option<(&syn::Generics, Option<&syn::WhereClause>, &Vec<TokenStream>)>,
-) -> Result<TokenStream> {
+fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<TokenStream> {
+    let ForwardCtx {
+        inherent_vis: inherent,
+        inline,
+        enum_ident,
+        trait_path,
+        trait_ty_generics,
+        variants,
+        fallback_variant,
+        trait_generics,
+    } = ctx;
+
     let mut sig = method.sig.clone();
 
+    let has_receiver = sig.receiver().is_some();
+
     // Check for unsupported self types like `self: Arc<Self>`
-    let self_ty = match sig.inputs.first() {
-        Some(syn::FnArg::Typed(p)) => Some(&p.ty),
-        Some(syn::FnArg::Receiver(r)) => Some(&r.ty),
-        None => None,
-    };
-    if let Some(ty) = self_ty.filter(|t| is_wrapped_self(t)) {
+    if has_receiver
+        && let Some(receiver) = sig.receiver()
+        && is_wrapped_self(&receiver.ty)
+    {
         return Err(syn::Error::new(
-            ty.span(),
+            receiver.ty.span(),
             "Arbitrary self types like `Arc<Self>` or `Box<Self>` are not supported. Use `self`, `&self`, or `&mut self` instead.",
+        ));
+    }
+
+    if !has_receiver && fallback_variant.is_none() {
+        return Err(syn::Error::new(
+            sig.ident.span(),
+            "Methods without a receiver require a #[fallback] enum variant",
         ));
     }
 
@@ -136,7 +178,7 @@ fn generate_method(
     let is_async = is_impl_future || sig.asyncness.is_some();
     sig.asyncness = is_async.then(|| syn::Token![async](proc_macro2::Span::call_site()));
 
-    if let Some((trait_gens, trait_where, variant_bounds)) = trait_generics {
+    if let Some((trait_gens, trait_where, variant_bounds)) = *trait_generics {
         // Check for generic name clashes
         let trait_names: std::collections::HashSet<_> = trait_gens
             .params
@@ -171,23 +213,57 @@ fn generate_method(
         );
     }
 
+    let enum_self_ty: syn::Type = syn::parse_quote!(#enum_ident);
+
     // Replace Self with enum ident in non-receiver arguments and return type
-    for p in sig.inputs.iter_mut().skip(1).filter_map(|a| match a {
-        syn::FnArg::Typed(p) => Some(p),
-        _ => None,
-    }) {
-        replace_self(&mut p.ty, enum_ident);
+    for p in typed_inputs_mut(&mut sig, has_receiver) {
+        replace_self_with(&mut p.ty, &enum_self_ty);
     }
     if let syn::ReturnType::Type(_, t) = &mut sig.output {
-        replace_self(t, enum_ident);
+        replace_self_with(t, &enum_self_ty);
+    }
+
+    if !has_receiver
+        && let Some((_, fallback_ty)) = fallback_variant
+        && let Some(where_clause) = &mut sig.generics.where_clause
+    {
+        for predicate in &mut where_clause.predicates {
+            if let syn::WherePredicate::Type(ty_pred) = predicate {
+                replace_self_with(&mut ty_pred.bounded_ty, fallback_ty);
+                for bound in &mut ty_pred.bounds {
+                    if let syn::TypeParamBound::Trait(trait_bound) = bound {
+                        replace_self_in_path(&mut trait_bound.path, fallback_ty);
+                    }
+                }
+            }
+        }
+    }
+
+    let returns_self = returns_bare_self(&method.sig.output);
+
+    if has_receiver {
+        let has_self_in_non_receiver_args = typed_inputs(&method.sig, true)
+            .map(|pat| &*pat.ty)
+            .any(type_contains_self);
+
+        if has_self_in_non_receiver_args {
+            return Err(syn::Error::new(
+                method.sig.span(),
+                "Methods with a receiver cannot use `Self` in non-receiver parameters",
+            ));
+        }
+
+        if return_type_contains_self(&method.sig.output) && !returns_self {
+            return Err(syn::Error::new(
+                method.sig.output.span(),
+                "Methods with a receiver only support bare `-> Self` return types",
+            ));
+        }
     }
 
     // Check for reserved parameter names
     let inner = quote::format_ident!("__disponent_inner");
-    for p in sig.inputs.iter().skip(1).filter_map(|a| match a {
-        syn::FnArg::Typed(p) => Some(p),
-        _ => None,
-    }) {
+    for p in typed_inputs(&sig, has_receiver) {
         if let syn::Pat::Ident(pat) = &*p.pat {
             if pat.ident == inner {
                 return Err(syn::Error::new(
@@ -200,27 +276,39 @@ fn generate_method(
 
     let attrs = method.attrs.iter().filter(|a| is_attr_allowed(a, true));
     let vis = inherent.map(|v| quote! { #v });
-    let args: Vec<_> = sig
-        .inputs
-        .iter()
-        .skip(1)
-        .filter_map(|a| match a {
-            syn::FnArg::Typed(p) => Some(&p.pat),
-            _ => None,
-        })
-        .collect();
+    let args: Vec<_> = typed_inputs(&sig, has_receiver).map(|p| &p.pat).collect();
 
     let method_ident = &sig.ident;
-    let arms = variants.iter().map(|(v, _, attrs)| {
-        let variant_attrs = attrs.iter().filter(|a| is_attr_allowed(a, false));
-        let call = quote! { #trait_path::#method_ident(#inner, #(#args),*) };
+
+    let body = if has_receiver {
+        let arms = variants.iter().map(|(v, _, attrs)| {
+            let variant_attrs = attrs.iter().filter(|a| is_attr_allowed(a, false));
+            let call = quote! { #trait_path::#method_ident(#inner, #(#args),*) };
+            let call = is_async.then(|| quote! { #call.await }).unwrap_or(call);
+            let call = if returns_self {
+                quote! { #enum_ident::#v(#call) }
+            } else {
+                call
+            };
+            quote! { #(#variant_attrs)* #enum_ident::#v(#inner) => #call, }
+        });
+        quote! { match self { #(#arms)* } }
+    } else {
+        let (fallback_ident, fallback_ty) = fallback_variant.expect("validated above");
+        let call = quote! {
+            <#fallback_ty as #trait_path #trait_ty_generics>::#method_ident(#(#args),*)
+        };
         let call = is_async.then(|| quote! { #call.await }).unwrap_or(call);
-        quote! { #(#variant_attrs)* #enum_ident::#v(#inner) => #call, }
-    });
+        if returns_self {
+            quote! { #enum_ident::#fallback_ident(#call) }
+        } else {
+            call
+        }
+    };
 
-    let inline_attr = inline.then(|| quote! { #[inline] });
+    let inline_attr = (*inline).then(|| quote! { #[inline] });
 
-    Ok(quote! { #(#attrs)* #inline_attr #vis #sig { match self { #(#arms)* } } })
+    Ok(quote! { #(#attrs)* #inline_attr #vis #sig { #body } })
 }
 
 fn generic_param_name(p: &syn::GenericParam) -> &syn::Ident {
@@ -229,6 +317,32 @@ fn generic_param_name(p: &syn::GenericParam) -> &syn::Ident {
         syn::GenericParam::Lifetime(l) => &l.lifetime.ident,
         syn::GenericParam::Const(c) => &c.ident,
     }
+}
+
+fn typed_inputs(
+    sig: &syn::Signature,
+    has_receiver: bool,
+) -> impl Iterator<Item = &syn::PatType> {
+    sig.inputs
+        .iter()
+        .skip(usize::from(has_receiver))
+        .filter_map(|arg| match arg {
+            syn::FnArg::Typed(pat) => Some(pat),
+            _ => None,
+        })
+}
+
+fn typed_inputs_mut(
+    sig: &mut syn::Signature,
+    has_receiver: bool,
+) -> impl Iterator<Item = &mut syn::PatType> {
+    sig.inputs
+        .iter_mut()
+        .skip(usize::from(has_receiver))
+        .filter_map(|arg| match arg {
+            syn::FnArg::Typed(pat) => Some(pat),
+            _ => None,
+        })
 }
 
 fn is_attr_allowed(attr: &syn::Attribute, include_doc: bool) -> bool {
@@ -318,13 +432,10 @@ fn is_wrapped_self(ty: &syn::Type) -> bool {
     inner.path.segments.len() == 1 && inner.path.segments[0].ident == "Self"
 }
 
-fn replace_self(ty: &mut syn::Type, ident: &syn::Ident) {
+fn replace_self_with(ty: &mut syn::Type, replacement: &syn::Type) {
     let syn::Type::Path(p) = ty else { return };
     if p.path.segments.len() == 1 && p.path.segments[0].ident == "Self" {
-        *ty = syn::Type::Path(syn::TypePath {
-            qself: None,
-            path: ident.clone().into(),
-        });
+        *ty = replacement.clone();
         return;
     }
 
@@ -332,11 +443,84 @@ fn replace_self(ty: &mut syn::Type, ident: &syn::Ident) {
         if let syn::PathArguments::AngleBracketed(args) = &mut seg.arguments {
             for arg in &mut args.args {
                 match arg {
-                    syn::GenericArgument::Type(t) => replace_self(t, ident),
-                    syn::GenericArgument::AssocType(at) => replace_self(&mut at.ty, ident),
+                    syn::GenericArgument::Type(t) => replace_self_with(t, replacement),
+                    syn::GenericArgument::AssocType(at) => {
+                        replace_self_with(&mut at.ty, replacement)
+                    }
                     _ => {}
                 }
             }
         }
+    }
+}
+
+fn replace_self_in_path(path: &mut syn::Path, replacement: &syn::Type) {
+    for seg in &mut path.segments {
+        if let syn::PathArguments::AngleBracketed(args) = &mut seg.arguments {
+            for arg in &mut args.args {
+                match arg {
+                    syn::GenericArgument::Type(t) => replace_self_with(t, replacement),
+                    syn::GenericArgument::AssocType(at) => {
+                        replace_self_with(&mut at.ty, replacement)
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+fn returns_bare_self(output: &syn::ReturnType) -> bool {
+    let syn::ReturnType::Type(_, ty) = output else {
+        return false;
+    };
+    let syn::Type::Path(type_path) = ty.as_ref() else {
+        return false;
+    };
+    type_path.qself.is_none()
+        && type_path.path.segments.len() == 1
+        && type_path.path.segments[0].ident == "Self"
+}
+
+fn is_fallback_attr(attr: &syn::Attribute) -> bool {
+    attr.path().is_ident("fallback")
+}
+
+fn return_type_contains_self(output: &syn::ReturnType) -> bool {
+    match output {
+        syn::ReturnType::Default => false,
+        syn::ReturnType::Type(_, ty) => type_contains_self(ty),
+    }
+}
+
+fn type_contains_self(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(type_path) => {
+            if type_path.qself.is_none()
+                && type_path.path.segments.len() == 1
+                && type_path.path.segments[0].ident == "Self"
+            {
+                return true;
+            }
+
+            type_path.path.segments.iter().any(|segment| {
+                let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+                    return false;
+                };
+                args.args.iter().any(|arg| match arg {
+                    syn::GenericArgument::Type(t) => type_contains_self(t),
+                    syn::GenericArgument::AssocType(at) => type_contains_self(&at.ty),
+                    _ => false,
+                })
+            })
+        }
+        syn::Type::Reference(r) => type_contains_self(&r.elem),
+        syn::Type::Tuple(t) => t.elems.iter().any(type_contains_self),
+        syn::Type::Paren(p) => type_contains_self(&p.elem),
+        syn::Type::Group(g) => type_contains_self(&g.elem),
+        syn::Type::Array(a) => type_contains_self(&a.elem),
+        syn::Type::Slice(s) => type_contains_self(&s.elem),
+        syn::Type::Ptr(p) => type_contains_self(&p.elem),
+        _ => false,
     }
 }

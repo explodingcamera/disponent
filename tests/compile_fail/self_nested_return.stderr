@@ -1,0 +1,5 @@
+error: Methods with a receiver only support bare `-> Self` return types
+ --> tests/compile_fail/self_nested_return.rs:9:23
+  |
+9 |         fn pair(self) -> (i32, Self);
+  |                       ^^^^^^^^^^^^^^

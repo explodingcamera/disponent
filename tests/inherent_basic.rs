@@ -4,6 +4,7 @@ disponent::declare!(
     #[disponent::configure(inherent, inline)]
     pub enum FooOrBar {
         Foo(Foo),
+        #[fallback]
         Bar(Bar),
     }
 

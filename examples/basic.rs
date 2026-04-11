@@ -1,8 +1,9 @@
 disponent::declare!(
-    #[disponent::configure(inherent, inline, from, try_into)]
+    #[disponent::configure(inline, from, try_into)]
     #[derive(Debug, Clone)]
     pub enum FooOrBar {
         Foo(Foo),
+        #[fallback]
         Bar(Bar),
         #[cfg(test)]
         Buz(Buz),
@@ -23,6 +24,7 @@ disponent::declare!(
         }
         #[cfg(test)]
         fn test_only(&self) -> bool;
+        fn using_fallback() -> Self;
     }
 );
 
@@ -45,6 +47,9 @@ impl SayHello for Foo {
     fn test_only(&self) -> bool {
         true
     }
+    fn using_fallback() -> Self {
+        Self
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +70,9 @@ impl SayHello for Bar {
     #[cfg(test)]
     fn test_only(&self) -> bool {
         true
+    }
+    fn using_fallback() -> Self {
+        Self
     }
 }
 
@@ -92,6 +100,9 @@ impl SayHello for Buz {
     fn test_only(&self) -> bool {
         true
     }
+    fn using_fallback() -> Self {
+        Self
+    }
 }
 
 fn main() {
@@ -108,6 +119,9 @@ fn main() {
         println!("name: {}", foo_or_bar.name());
         println!("with_generic: {}", foo_or_bar.with_generic(1.23));
         println!("with_default: {}", foo_or_bar.with_default());
+
+        let fallback = FooOrBar::using_fallback();
+        println!("fallback name: {}", fallback.name());
 
         let consumed = foo_or_bar.consume();
         println!("consumed: {}", consumed);

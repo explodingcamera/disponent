@@ -1,0 +1,5 @@
+error: Methods with a receiver cannot use `Self` in non-receiver parameters
+ --> tests/compile_fail/self_in_param.rs:9:9
+  |
+9 |         fn take_other(&self, val: Self);
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
