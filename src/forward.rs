@@ -286,7 +286,11 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
         let arms = variants.iter().map(|(v, _, attrs)| {
             let variant_attrs = attrs.iter().filter(|a| is_attr_allowed(a, false));
             let call = quote! { #trait_path::#method_ident(#inner, #(#args),*) };
-            let call = is_async.then(|| quote! { #call.await }).unwrap_or(call);
+            let call = if is_async {
+                quote! { #call.await }
+            } else {
+                call
+            };
             let call = if returns_self {
                 quote! { #enum_ident::#v(#call) }
             } else {
@@ -300,7 +304,11 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
         let call = quote! {
             <#fallback_ty as #trait_path #trait_ty_generics>::#method_ident(#(#args),*)
         };
-        let call = is_async.then(|| quote! { #call.await }).unwrap_or(call);
+        let call = if is_async {
+            quote! { #call.await }
+        } else {
+            call
+        };
         if returns_self {
             quote! { #enum_ident::#fallback_ident(#call) }
         } else {
