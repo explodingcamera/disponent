@@ -158,11 +158,13 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
     // Check for unsupported self types like `self: Arc<Self>`
     if has_receiver {
         if let Some(receiver) = sig.receiver() {
-            if is_wrapped_self(&receiver.ty) {
-                return Err(syn::Error::new(
-                    receiver.ty.span(),
-                    "Arbitrary self types like `Arc<Self>` or `Box<Self>` are not supported. Use `self`, `&self`, or `&mut self` instead.",
-                ));
+            if let syn::ReceiverKind::Typed(_, ty) = &receiver.kind {
+                if is_wrapped_self(ty) {
+                    return Err(syn::Error::new(
+                        ty.span(),
+                        "Arbitrary self types like `Arc<Self>` or `Box<Self>` are not supported. Use `self`, `&self`, or `&mut self` instead.",
+                    ));
+                }
             }
         }
     }
