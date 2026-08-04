@@ -156,18 +156,15 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
     let has_receiver = sig.receiver().is_some();
 
     // Check for unsupported self types like `self: Arc<Self>`
-    if has_receiver {
-        if let Some(receiver) = sig.receiver() {
-            if let syn::ReceiverKind::Typed(_, ty) = &receiver.kind {
-                if is_wrapped_self(ty) {
+    if has_receiver
+        && let Some(receiver) = sig.receiver()
+            && let syn::ReceiverKind::Typed(_, ty) = &receiver.kind
+                && is_wrapped_self(ty) {
                     return Err(syn::Error::new(
                         ty.span(),
                         "Arbitrary self types like `Arc<Self>` or `Box<Self>` are not supported. Use `self`, `&self`, or `&mut self` instead.",
                     ));
                 }
-            }
-        }
-    }
 
     if !has_receiver && fallback_variant.is_none() {
         return Err(syn::Error::new(
@@ -226,9 +223,9 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
         replace_self_with(t, &enum_self_ty);
     }
 
-    if !has_receiver {
-        if let Some((_, fallback_ty)) = fallback_variant {
-            if let Some(where_clause) = &mut sig.generics.where_clause {
+    if !has_receiver
+        && let Some((_, fallback_ty)) = fallback_variant
+            && let Some(where_clause) = &mut sig.generics.where_clause {
                 for predicate in &mut where_clause.predicates {
                     if let syn::WherePredicate::Type(ty_pred) = predicate {
                         replace_self_with(&mut ty_pred.bounded_ty, fallback_ty);
@@ -240,8 +237,6 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
                     }
                 }
             }
-        }
-    }
 
     let returns_self = returns_bare_self(&method.sig.output);
 
@@ -268,14 +263,13 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
     // Check for reserved parameter names
     let inner = quote::format_ident!("__disponent_inner");
     for p in typed_inputs(&sig, has_receiver) {
-        if let syn::Pat::Ident(pat) = &*p.pat {
-            if pat.ident == inner {
+        if let syn::Pat::Ident(pat) = &*p.pat
+            && pat.ident == inner {
                 return Err(syn::Error::new(
                     pat.ident.span(),
                     "Parameter name `__disponent_inner` is reserved. Use a different name.",
                 ));
             }
-        }
     }
 
     let attrs = method.attrs.iter().filter(|a| is_attr_allowed(a, true));

@@ -1,30 +1,29 @@
 [package]
-name="disponent"
-version="0.2.4"
-edition="2024"
-repository="https://github.com/explodingcamera/disponent"
-authors=["Henry Gressmann <crates@henrygressmann.de>"]
-license="MIT OR Apache-2.0"
-rust-version="1.85"
-description="An alternative to dynamic-dispatched method calls, without the need for object safety"
-keywords=["traits", "dynamic", "enum", "optimization"]
-categories=["rust-patterns", "development-tools::procedural-macro-helpers"]
+name = "disponent"
+version = "0.2.4"
+edition = "2024"
+rust-version = "1.88"
+description = "An alternative to dynamic-dispatched method calls, without the need for object safety"
+repository = "https://github.com/explodingcamera/disponent"
+license = "MIT OR Apache-2.0"
+keywords = ["dynamic", "enum", "optimization", "traits"]
+categories = ["development-tools::procedural-macro-helpers", "rust-patterns"]
 
 [lib]
-proc-macro=true
+proc-macro = true
 
 [dependencies]
-proc-macro2="^1.0"
-quote="^1.0"
-syn={version="^3.0", default-features=false, features=[
-    "full",
-    "clone-impls",
-    "parsing",
-    "printing",
-    "proc-macro",
-]}
+proc-macro2 = "^1.0"
+quote = "^1.0"
+syn = { version = "^3.0", default-features = false, features = [
+  "clone-impls",
+  "full",
+  "parsing",
+  "printing",
+  "proc-macro",
+] }
 
 [dev-dependencies]
-smol="2.0"
-trybuild="1.0"
-rustversion="1.0"
+rustversion = "1.0"
+smol = "2.0"
+trybuild = "1.0"
