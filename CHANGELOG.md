@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Bump MSRV to 1.88
+- Fixed generic enum methods returning `Self`
+- Fixed forwarding of method type and const generic arguments
+- Limited `#[fallback]` attribute removal to the forwarded enum's variants
 
 ## [0.2.4] - 2026-07-22
 

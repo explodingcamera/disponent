@@ -214,16 +214,6 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
         );
     }
 
-    let enum_self_ty: syn::Type = syn::parse_quote!(#enum_ident);
-
-    // Replace Self with enum ident in non-receiver arguments and return type
-    for p in typed_inputs_mut(&mut sig, has_receiver) {
-        replace_self_with(&mut p.ty, &enum_self_ty);
-    }
-    if let syn::ReturnType::Type(_, t) = &mut sig.output {
-        replace_self_with(t, &enum_self_ty);
-    }
-
     if !has_receiver
         && let Some((_, fallback_ty)) = fallback_variant
         && let Some(where_clause) = &mut sig.generics.where_clause
@@ -280,11 +270,23 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
     let args: Vec<_> = typed_inputs(&sig, has_receiver).map(|p| &p.pat).collect();
 
     let method_ident = &sig.ident;
+    // Lifetimes may be late-bound, so let Rust infer them at the call site.
+    let method_args: Vec<_> = method
+        .sig
+        .generics
+        .params
+        .iter()
+        .filter_map(|param| match param {
+            syn::GenericParam::Lifetime(_) => None,
+            _ => Some(generic_param_name(param)),
+        })
+        .collect();
+    let turbofish = (!method_args.is_empty()).then(|| quote! { ::<#(#method_args),*> });
 
     let body = if has_receiver {
-        let arms = variants.iter().map(|(v, _, attrs)| {
+        let arms = variants.iter().map(|(v, ty, attrs)| {
             let variant_attrs = attrs.iter().filter(|a| is_attr_allowed(a, false));
-            let call = quote! { #trait_path::#method_ident(#inner, #(#args),*) };
+            let call = quote! { <#ty as #trait_path #trait_ty_generics>::#method_ident #turbofish (#inner, #(#args),*) };
             let call = if is_async {
                 quote! { #call.await }
             } else {
@@ -301,7 +303,7 @@ fn generate_method(method: &syn::TraitItemFn, ctx: &ForwardCtx<'_>) -> Result<To
     } else {
         let (fallback_ident, fallback_ty) = fallback_variant.expect("validated above");
         let call = quote! {
-            <#fallback_ty as #trait_path #trait_ty_generics>::#method_ident(#(#args),*)
+            <#fallback_ty as #trait_path #trait_ty_generics>::#method_ident #turbofish (#(#args),*)
         };
         let call = if is_async {
             quote! { #call.await }
@@ -331,19 +333,6 @@ fn generic_param_name(p: &syn::GenericParam) -> &syn::Ident {
 fn typed_inputs(sig: &syn::Signature, has_receiver: bool) -> impl Iterator<Item = &syn::PatType> {
     sig.inputs
         .iter()
-        .skip(usize::from(has_receiver))
-        .filter_map(|arg| match arg {
-            syn::FnArg::Typed(pat) => Some(pat),
-            _ => None,
-        })
-}
-
-fn typed_inputs_mut(
-    sig: &mut syn::Signature,
-    has_receiver: bool,
-) -> impl Iterator<Item = &mut syn::PatType> {
-    sig.inputs
-        .iter_mut()
         .skip(usize::from(has_receiver))
         .filter_map(|arg| match arg {
             syn::FnArg::Typed(pat) => Some(pat),

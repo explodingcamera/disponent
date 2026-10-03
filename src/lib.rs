@@ -50,7 +50,7 @@
 mod convert;
 mod forward;
 
-use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
+use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{
     Result,
@@ -135,7 +135,7 @@ impl Parse for Disponent {
         let input: TokenStream = input.parse()?;
         let out = input.clone();
 
-        let file = match syn::parse2::<syn::File>(input) {
+        let mut file = match syn::parse2::<syn::File>(input) {
             Ok(f) => f,
             Err(_) => return Ok(Disponent(out)),
         };
@@ -230,21 +230,19 @@ impl Parse for Disponent {
             TokenStream::new()
         };
 
-        let has_fallback_attr = enum_def.variants.iter().any(|variant| {
-            variant
-                .attrs
-                .iter()
-                .any(|attr| attr.path().is_ident("fallback"))
-        });
-
-        let declaration_input = if has_fallback_attr {
-            strip_fallback_attrs(out.clone())
-        } else {
-            out
-        };
+        for item in &mut file.items {
+            if let syn::Item::Enum(enum_def) = item {
+                for variant in &mut enum_def.variants {
+                    variant
+                        .attrs
+                        .retain(|attr| !attr.path().is_ident("fallback"));
+                }
+                break;
+            }
+        }
 
         let definition = quote::quote! {
-            #declaration_input
+            #file
             #forward_to_variant
             #from_impl
             #try_into_impl
@@ -258,57 +256,6 @@ impl ToTokens for Disponent {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         self.0.to_tokens(tokens)
     }
-}
-
-fn strip_fallback_attrs(tokens: TokenStream) -> TokenStream {
-    strip_fallback_attrs_inner(tokens).0
-}
-
-fn strip_fallback_attrs_inner(tokens: TokenStream) -> (TokenStream, bool) {
-    let mut out = TokenStream::new();
-    let mut iter = tokens.into_iter().peekable();
-    let mut changed = false;
-
-    while let Some(token) = iter.next() {
-        match token {
-            TokenTree::Punct(punct) if punct.as_char() == '#' => {
-                let should_strip = iter.peek().and_then(|next| match next {
-                    TokenTree::Group(group) if group.delimiter() == Delimiter::Bracket => {
-                        Some(is_fallback_attr_group(group))
-                    }
-                    _ => None,
-                });
-
-                if should_strip == Some(true) {
-                    iter.next();
-                    changed = true;
-                    continue;
-                }
-
-                out.extend(std::iter::once(TokenTree::Punct(punct)));
-            }
-            TokenTree::Group(group) => {
-                let (inner, inner_changed) = strip_fallback_attrs_inner(group.stream());
-                if inner_changed {
-                    changed = true;
-                    let mut rewritten = Group::new(group.delimiter(), inner);
-                    rewritten.set_span(group.span());
-                    out.extend(std::iter::once(TokenTree::Group(rewritten)));
-                } else {
-                    out.extend(std::iter::once(TokenTree::Group(group)));
-                }
-            }
-            other => out.extend(std::iter::once(other)),
-        }
-    }
-
-    (out, changed)
-}
-
-fn is_fallback_attr_group(group: &Group) -> bool {
-    syn::parse2::<syn::Path>(group.stream())
-        .map(|path| path.is_ident("fallback"))
-        .unwrap_or(false)
 }
 
 /// Declare a trait and enum together, generating forwarding methods.
